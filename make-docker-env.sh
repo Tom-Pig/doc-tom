@@ -25,9 +25,18 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
 sudo chmod 0644 /etc/apt/keyrings/docker.gpg
 
 echo -e "${BLUE}==> 添加 Docker 官方仓库并刷新索引${RESET}"
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
- | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# ---- 仅此处为必要修改：更稳健地选择发行版代号，避免“no Release file” ----
+source /etc/os-release || true
+CODENAME="${UBUNTU_CODENAME:-$(lsb_release -cs 2>/dev/null || echo noble)}"
+case "$CODENAME" in
+  noble|jammy|focal) : ;;                         # 官方支持
+  *) echo -e "${YELLOW}[WARN] 检测到非常规代号：$CODENAME，回退使用 jammy 源${RESET}"; CODENAME="jammy" ;;
+esac
+sudo tee /etc/apt/sources.list.d/docker.list >/dev/null <<EOF
+deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $CODENAME stable
+EOF
 sudo apt-get update -y
+# ---------------------------------------------------------------------------
 
 echo -e "${BLUE}==> 安装 Docker CE/CLI、containerd、Buildx、Compose${RESET}"
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
