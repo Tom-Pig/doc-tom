@@ -2,51 +2,82 @@
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-# 定义颜色
+# -----------------------------
+# 颜色配置
+# -----------------------------
 GREEN="\033[1;32m"
 RED="\033[1;31m"
 BLUE="\033[1;34m"
 YELLOW="\033[1;33m"
 RESET="\033[0m"
 
-echo -e "${BLUE}接下来将会基于ubuntu环境移除当前docker，并重新安装配置docker环境${RESET}"
+echo -e "${BLUE}接下来将会基于 ubuntu 环境移除当前 docker，并重新安装配置 docker 环境${RESET}"
 sudo -v
 
-echo -e "${BLUE}==> 移除旧版本的docker${RESET}"
+# ================================================================
+# 1. 移除旧版 docker
+# ================================================================
+echo -e "${BLUE}==> 移除旧版本的 docker${RESET}"
 sudo apt-get remove -y docker docker-engine docker.io containerd runc || true
 sudo apt-get autoremove -y || true
 
-echo -e "${BLUE}==> 开始安装、配置${RESET}"
+# ================================================================
+# 2. 安装依赖与 GPG KEY
+# ================================================================
+echo -e "${BLUE}==> 安装依赖与准备 GPG Key${RESET}"
 sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl gnupg lsb-release
+sudo apt-get install -y ca-certificates curl gnupg lsb-release jq
+
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
- | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+echo -e "${BLUE}==> 下载 Docker GPG Key（自动覆盖旧文件）${RESET}"
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.gpg || {
+  echo -e "${YELLOW}[WARN] 首次下载失败，正在重试...${RESET}"
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.gpg
+}
+
+sudo gpg --yes --batch --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg
 sudo chmod 0644 /etc/apt/keyrings/docker.gpg
 
-echo -e "${BLUE}==> 添加 Docker 官方仓库并刷新索引${RESET}"
-# ---- 仅此处为必要修改：更稳健地选择发行版代号，避免“no Release file” ----
+# ================================================================
+# 3. 写入 APT 源
+# ================================================================
+echo -e "${BLUE}==> 添加 Docker APT 仓库${RESET}"
+
 source /etc/os-release || true
-CODENAME="${UBUNTU_CODENAME:-$(lsb_release -cs 2>/dev/null || echo noble)}"
+CODENAME="${UBUNTU_CODENAME:-$(lsb_release -cs || echo noble)}"
+
 case "$CODENAME" in
-  noble|jammy|focal) : ;;                         # 官方支持
-  *) echo -e "${YELLOW}[WARN] 检测到非常规代号：$CODENAME，回退使用 jammy 源${RESET}"; CODENAME="jammy" ;;
+  noble|jammy|focal) ;; 
+  *)
+    echo -e "${YELLOW}[WARN] 未知系统代号：$CODENAME，回退使用 jammy${RESET}"
+    CODENAME="jammy"
+    ;;
 esac
+
 sudo tee /etc/apt/sources.list.d/docker.list >/dev/null <<EOF
-deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $CODENAME stable
+deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $CODENAME stable
 EOF
+
 sudo apt-get update -y
-# ---------------------------------------------------------------------------
 
-echo -e "${BLUE}==> 安装 Docker CE/CLI、containerd、Buildx、Compose${RESET}"
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# ================================================================
+# 4. 安装 Docker 全家桶
+# ================================================================
+echo -e "${BLUE}==> 安装 Docker CE + CLI + containerd + buildx + compose${RESET}"
 
-echo -e "${BLUE}==> 配置开机自启动并启动 docker${RESET}"
-sudo systemctl enable --now docker
+sudo apt-get install -y \
+  docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
 
-echo -e "${BLUE}==> 配置国内源加速${RESET}"
+# ================================================================
+# 5. 写入 daemon.json 配置
+# ================================================================
+echo -e "${BLUE}==> 生成 daemon.json${RESET}"
 sudo mkdir -p /etc/docker
-cat <<'EOF' | sudo tee /etc/docker/daemon.json >/dev/null
+
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
 {
   "registry-mirrors": [
     "https://docker.m.daocloud.io",
@@ -60,55 +91,75 @@ cat <<'EOF' | sudo tee /etc/docker/daemon.json >/dev/null
     "max-size": "100m",
     "max-file": "3"
   },
-  "storage-driver": "overlay2",
-  "dns": ["223.5.5.5", "119.29.29.29", "8.8.8.8"]
+  "storage-driver": "overlay2"
 }
 EOF
 
-echo -e "${BLUE}==> 重新加载并重启 docker 以应用配置${RESET}"
-sudo systemctl daemon-reload
-sudo systemctl restart docker
+# -------------------------
+# JSON 语法校验
+# -------------------------
+echo -e "${BLUE}==> 校验 daemon.json 是否为合法 JSON${RESET}"
 
-echo -e "${BLUE}==> 检查 docker 服务是否就绪（最多等待30秒）${RESET}"
+if ! jq empty /etc/docker/daemon.json 2>/dev/null; then
+  echo -e "${RED}✗ daemon.json JSON 语法错误！dockerd 将无法启动${RESET}"
+  exit 11
+fi
+
+echo -e "${GREEN}✓ daemon.json 格式合法${RESET}"
+
+# ================================================================
+# 6. 启动 docker 服务
+# ================================================================
+echo -e "${BLUE}==> 启动并设置 docker 开机自启${RESET}"
+sudo systemctl daemon-reload
+sudo systemctl enable docker
+sudo systemctl restart docker || {
+  echo -e "${RED}✗ Docker 启动失败！尝试查看日志${RESET}"
+  journalctl -u docker -n 50 --no-pager
+  exit 12
+}
+
+# ================================================================
+# 7. docker 就绪检查
+# ================================================================
+echo -e "${BLUE}==> 检查 docker 服务是否就绪${RESET}"
+
 for i in {1..30}; do
   if sudo docker info >/dev/null 2>&1; then
-    echo -e "${GREEN}✓ dockerd 已就绪${RESET}"
+    echo -e "${GREEN}✓ Docker 服务已正常运行${RESET}"
     break
   fi
   sleep 1
-  if [[ $i -eq 30 ]]; then
-    echo -e "${RED}✗ dockerd 未在30秒内就绪，打印最近日志：${RESET}"
-    journalctl -u docker -n 200 --no-pager || true
-    exit 1
-  fi
+  [[ $i -eq 30 ]] && {
+    echo -e "${RED}✗ Docker 未能在 30 秒内启动${RESET}"
+    exit 13
+  }
 done
 
-echo -e "${YELLOW}如果镜像加速无效则尝试进入当前‘make-docker-env.sh’脚本，取消注释部分，进行代理${RESET}"
-echo -e "${YELLOW}默认状态不启动代理${RESET}"
-# 代理配置相关指令，如果需要代理请取消注释并修改为自己的代理地址
-# sudo mkdir -p /etc/systemd/system/docker.service.d
-# cat <<'EOF' | sudo tee /etc/systemd/system/docker.service.d/proxy.conf
-# [Service]
-# Environment="HTTP_PROXY=http://127.0.0.1:7890"
-# Environment="HTTPS_PROXY=http://127.0.0.1:7890"
-# Environment="NO_PROXY=localhost,127.0.0.1,::1,*.local,*.aliyuncs.com,*.docker.io"
-# EOF
-# sudo systemctl daemon-reload
-# sudo systemctl restart docker
+# ================================================================
+# 8. 组件完整性检查
+# ================================================================
+echo -e "${BLUE}==> 检查 docker / containerd / buildx 完整性${RESET}"
 
-echo -e "${BLUE}==> 配置完成，进行拉取测试（alpine:latest）${RESET}"
-if sudo docker pull alpine:latest; then
-  echo -e "${GREEN}✓ 镜像拉取成功，显示镜像信息：${RESET}"
-  sudo docker images alpine:latest
-  echo -e "${BLUE}==> 清理测试镜像...${RESET}"
-  if sudo docker rmi alpine:latest >/dev/null 2>&1; then
-    echo -e "${GREEN}✓ 测试镜像已删除${RESET}"
-  else
-    echo -e "${YELLOW}⚠ 测试镜像删除失败（可能被容器占用），请手动检查${RESET}"
-  fi
-else
-  echo -e "${RED}✗ 镜像拉取失败！请检查网络/DNS/镜像加速器或启用代理后重试。${RESET}"
-  exit 2
-fi
+command -v docker >/dev/null || { echo -e "${RED}✗ docker 缺失${RESET}"; exit 21; }
+command -v containerd >/dev/null || { echo -e "${RED}✗ containerd 缺失${RESET}"; exit 22; }
+docker buildx version >/dev/null 2>&1 || { echo -e "${RED}✗ buildx 缺失${RESET}"; exit 23; }
 
-echo -e "${GREEN}🎉 全部完成！${RESET}"
+echo -e "${GREEN}✓ docker / containerd / buildx 均正常${RESET}"
+
+# ================================================================
+# 9. 测试镜像
+# ================================================================
+echo -e "${BLUE}==> 拉取并运行测试镜像（alpine）${RESET}"
+
+sudo docker pull alpine:latest
+sudo docker run --rm alpine echo "hello docker"
+
+echo -e "${GREEN}✓ 测试镜像运行成功${RESET}"
+
+sudo docker rmi alpine:latest >/dev/null || true
+
+# ================================================================
+# 10. 完成
+# ================================================================
+echo -e "${GREEN} Docker 全部安装与检测完成！${RESET}"
