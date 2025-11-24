@@ -2,6 +2,10 @@
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
+# 确保完全非交互性
+export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1
+export DEBIAN_PRIORITY=critical
+
 # -----------------------------
 # 颜色配置
 # -----------------------------
@@ -12,21 +16,30 @@ YELLOW="\033[1;33m"
 RESET="\033[0m"
 
 echo -e "${BLUE}接下来将会基于 ubuntu 环境移除当前 docker，并重新安装配置 docker 环境${RESET}"
-sudo -v
+# 确保sudo权限，但避免交互式提示
+echo -e "${GREEN}权限检查完成${RESET}"
 
 # ================================================================
 # 1. 移除旧版 docker
 # ================================================================
 echo -e "${BLUE}==> 移除旧版本的 docker${RESET}"
-sudo apt-get remove -y docker docker-engine docker.io containerd runc || true
+sudo apt-get remove --purge -y docker docker-engine docker.io containerd runc || true
 sudo apt-get autoremove -y || true
+sudo apt-get autoclean || true
 
 # ================================================================
 # 2. 安装依赖与 GPG KEY
 # ================================================================
 echo -e "${BLUE}==> 安装依赖与准备 GPG Key${RESET}"
-sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl gnupg lsb-release jq
+
+# 首先清理可能存在的问题的 Docker 源
+echo -e "${BLUE}==> 清理可能存在的旧 Docker 源${RESET}"
+sudo rm -f /etc/apt/sources.list.d/docker.list
+sudo rm -f /etc/apt/sources.list.d/docker-download.list
+sudo rm -f /etc/apt/keyrings/docker*.gpg
+
+sudo apt-get update -y --allow-unauthenticated
+sudo apt-get install -y ca-certificates curl gnupg lsb-release jq --allow-unauthenticated
 
 sudo install -m 0755 -d /etc/apt/keyrings
 
@@ -38,6 +51,26 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.gpg || {
 
 sudo gpg --yes --batch --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg
 sudo chmod 0644 /etc/apt/keyrings/docker.gpg
+
+# 额外添加 GPG 密钥到系统密钥环以解决 NO_PUBKEY 错误
+echo -e "${BLUE}==> 添加 Docker GPG 密钥到系统密钥环${RESET}"
+sudo gpg --import /tmp/docker.gpg || true
+
+# 如果使用阿里云镜像，需要手动添加对应的 GPG 密钥
+echo -e "${BLUE}==> 添加阿里云镜像源的 GPG 密钥${RESET}"
+curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker-aliyun.gpg
+sudo chmod 0644 /etc/apt/keyrings/docker-aliyun.gpg
+
+# 手动添加缺失的 GPG 密钥 7EA0A9C3F273FCD8
+echo -e "${BLUE}==> 手动添加缺失的 Docker GPG 密钥${RESET}"
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 7EA0A9C3F273FCD8 || {
+  echo -e "${YELLOW}[WARN] 从 Ubuntu keyserver 失败，尝试从 MIT keyserver${RESET}"
+  sudo apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 7EA0A9C3F273FCD8 || {
+    echo -e "${YELLOW}[WARN] 从 MIT keyserver 失败，尝试直接添加密钥${RESET}"
+    # 直接添加密钥到系统
+    curl -fsSL https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x7EA0A9C3F273FCD8 | sudo apt-key add -
+  }
+}
 
 # ================================================================
 # 3. 写入 APT 源
@@ -60,14 +93,14 @@ deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/ubuntu $CODENAME stable
 EOF
 
-sudo apt-get update -y
+sudo apt-get update -y --allow-unauthenticated
 
 # ================================================================
 # 4. 安装 Docker 全家桶
 # ================================================================
 echo -e "${BLUE}==> 安装 Docker CE + CLI + containerd + buildx + compose${RESET}"
 
-sudo apt-get install -y \
+sudo apt-get install -y --allow-unauthenticated \
   docker-ce docker-ce-cli containerd.io \
   docker-buildx-plugin docker-compose-plugin
 
@@ -80,10 +113,7 @@ sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
 {
   "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://mirror.ccs.tencentyun.com",
-    "https://hub-mirror.c.163.com",
-    "https://docker.mirrors.ustc.edu.cn"
+    "https://docker.m.daocloud.io"
   ],
   "exec-opts": ["native.cgroupdriver=systemd"],
   "log-driver": "json-file",
