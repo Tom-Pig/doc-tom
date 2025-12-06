@@ -2,194 +2,265 @@
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-# 确保完全非交互性
-export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1
-export DEBIAN_PRIORITY=critical
+GREEN="\033[1;32m"; RED="\033[1;31m"; BLUE="\033[1;34m"; YELLOW="\033[1;33m"; RESET="\033[0m"
 
-# -----------------------------
-# 颜色配置
-# -----------------------------
-GREEN="\033[1;32m"
-RED="\033[1;31m"
-BLUE="\033[1;34m"
-YELLOW="\033[1;33m"
-RESET="\033[0m"
+echo -e "${BLUE}=== Docker 安装助手（智能代理 & 无系统污染版）===${RESET}"
 
-echo -e "${BLUE}接下来将会基于 ubuntu 环境移除当前 docker，并重新安装配置 docker 环境${RESET}"
-# 确保sudo权限，但避免交互式提示
-echo -e "${GREEN}权限检查完成${RESET}"
+# ----------------------------------------------------------
+# 1. 检测宿主机代理
+# ----------------------------------------------------------
+HOST_HTTP_PROXY="${http_proxy:-${HTTP_PROXY:-}}"
+HOST_HTTPS_PROXY="${https_proxy:-${HTTPS_PROXY:-}}"
 
-# ================================================================
-# 1. 移除旧版 docker
-# ================================================================
-echo -e "${BLUE}==> 移除旧版本的 docker${RESET}"
-sudo apt-get remove --purge -y docker docker-engine docker.io containerd runc || true
-sudo apt-get autoremove -y || true
-sudo apt-get autoclean || true
-
-# ================================================================
-# 2. 安装依赖与 GPG KEY
-# ================================================================
-echo -e "${BLUE}==> 安装依赖与准备 GPG Key${RESET}"
-
-# 首先清理可能存在的问题的 Docker 源
-echo -e "${BLUE}==> 清理可能存在的旧 Docker 源${RESET}"
-sudo rm -f /etc/apt/sources.list.d/docker.list
-sudo rm -f /etc/apt/sources.list.d/docker-download.list
-sudo rm -f /etc/apt/keyrings/docker*.gpg
-
-sudo apt-get update -y --allow-unauthenticated
-sudo apt-get install -y ca-certificates curl gnupg lsb-release jq --allow-unauthenticated
-
-sudo install -m 0755 -d /etc/apt/keyrings
-
-echo -e "${BLUE}==> 下载 Docker GPG Key（自动覆盖旧文件）${RESET}"
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.gpg || {
-  echo -e "${YELLOW}[WARN] 首次下载失败，正在重试...${RESET}"
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.gpg
-}
-
-sudo gpg --yes --batch --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg
-sudo chmod 0644 /etc/apt/keyrings/docker.gpg
-
-# 额外添加 GPG 密钥到系统密钥环以解决 NO_PUBKEY 错误
-echo -e "${BLUE}==> 添加 Docker GPG 密钥到系统密钥环${RESET}"
-sudo gpg --import /tmp/docker.gpg || true
-
-# 如果使用阿里云镜像，需要手动添加对应的 GPG 密钥
-echo -e "${BLUE}==> 添加阿里云镜像源的 GPG 密钥${RESET}"
-curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker-aliyun.gpg
-sudo chmod 0644 /etc/apt/keyrings/docker-aliyun.gpg
-
-# 手动添加缺失的 GPG 密钥 7EA0A9C3F273FCD8
-echo -e "${BLUE}==> 手动添加缺失的 Docker GPG 密钥${RESET}"
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 7EA0A9C3F273FCD8 || {
-  echo -e "${YELLOW}[WARN] 从 Ubuntu keyserver 失败，尝试从 MIT keyserver${RESET}"
-  sudo apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 7EA0A9C3F273FCD8 || {
-    echo -e "${YELLOW}[WARN] 从 MIT keyserver 失败，尝试直接添加密钥${RESET}"
-    # 直接添加密钥到系统
-    curl -fsSL https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x7EA0A9C3F273FCD8 | sudo apt-key add -
-  }
-}
-
-# ================================================================
-# 3. 写入 APT 源
-# ================================================================
-echo -e "${BLUE}==> 添加 Docker APT 仓库${RESET}"
-
-source /etc/os-release || true
-CODENAME="${UBUNTU_CODENAME:-$(lsb_release -cs || echo noble)}"
-
-case "$CODENAME" in
-  noble|jammy|focal) ;; 
-  *)
-    echo -e "${YELLOW}[WARN] 未知系统代号：$CODENAME，回退使用 jammy${RESET}"
-    CODENAME="jammy"
-    ;;
-esac
-
-sudo tee /etc/apt/sources.list.d/docker.list >/dev/null <<EOF
-deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $CODENAME stable
-EOF
-
-sudo apt-get update -y --allow-unauthenticated
-
-# ================================================================
-# 4. 安装 Docker 全家桶
-# ================================================================
-echo -e "${BLUE}==> 安装 Docker CE + CLI + containerd + buildx + compose${RESET}"
-
-sudo apt-get install -y --allow-unauthenticated \
-  docker-ce docker-ce-cli containerd.io \
-  docker-buildx-plugin docker-compose-plugin
-
-# ================================================================
-# 5. 写入 daemon.json 配置
-# ================================================================
-echo -e "${BLUE}==> 生成 daemon.json${RESET}"
-sudo mkdir -p /etc/docker
-
-sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
-{
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io"
-  ],
-  "exec-opts": ["native.cgroupdriver=systemd"],
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "100m",
-    "max-file": "3"
-  },
-  "storage-driver": "overlay2"
-}
-EOF
-
-# -------------------------
-# JSON 语法校验
-# -------------------------
-echo -e "${BLUE}==> 校验 daemon.json 是否为合法 JSON${RESET}"
-
-if ! jq empty /etc/docker/daemon.json 2>/dev/null; then
-  echo -e "${RED}✗ daemon.json JSON 语法错误！dockerd 将无法启动${RESET}"
-  exit 11
+if [[ -z "$HOST_HTTP_PROXY" && -z "$HOST_HTTPS_PROXY" ]]; then
+  echo -e "${RED}⛔ 未检测到宿主机代理，Docker 下载可能极慢或失败${RESET}"
+  echo -e "${YELLOW}⚠️ 例如可设置:${RESET}"
+  echo -e "    export http_proxy=http://<ip>:<port>"
+  echo -e "    export https_proxy=http://<ip>:<port>"
+  exit 1
 fi
 
-echo -e "${GREEN}✓ daemon.json 格式合法${RESET}"
+echo -e "${GREEN}🌐 宿主机代理检测成功:${RESET}"
+[[ -n "$HOST_HTTP_PROXY" ]]  && echo "  HTTP : $HOST_HTTP_PROXY"
+[[ -n "$HOST_HTTPS_PROXY" ]] && echo "  HTTPS: $HOST_HTTPS_PROXY"
 
-# ================================================================
-# 6. 启动 docker 服务
-# ================================================================
-echo -e "${BLUE}==> 启动并设置 docker 开机自启${RESET}"
-sudo systemctl daemon-reload
-sudo systemctl enable docker
-sudo systemctl restart docker || {
-  echo -e "${RED}✗ Docker 启动失败！尝试查看日志${RESET}"
-  journalctl -u docker -n 50 --no-pager
-  exit 12
+# ----------------------------------------------------------
+# 2. APT 临时代理参数（保持原样）
+# ----------------------------------------------------------
+APT_PROXY_ARGS=()
+[[ -n "$HOST_HTTP_PROXY"  ]] && APT_PROXY_ARGS+=("-oAcquire::http::Proxy=$HOST_HTTP_PROXY")
+[[ -n "$HOST_HTTPS_PROXY" ]] && APT_PROXY_ARGS+=("-oAcquire::https::Proxy=$HOST_HTTPS_PROXY")
+
+# ----------------------------------------------------------
+# 3. 移除旧 Docker
+# ----------------------------------------------------------
+echo -e "${BLUE}==> 移除旧 Docker（不影响镜像/容器/数据）${RESET}"
+sudo apt-get remove -y docker docker-engine docker.io containerd runc \
+   docker-ce docker-ce-cli docker-compose docker-buildx-plugin docker-compose-plugin || true
+
+sudo rm -rf /etc/docker /etc/apt/keyrings/docker.asc \
+            /etc/apt/sources.list.d/docker.sources || true
+
+# ----------------------------------------------------------
+# 4. 更新 APT
+# ----------------------------------------------------------
+echo -e "${BLUE}==> 更新 APT（使用临时代理）${RESET}"
+sudo apt-get update "${APT_PROXY_ARGS[@]}"
+
+# ----------------------------------------------------------
+# 5. 安装依赖
+# ----------------------------------------------------------
+sudo apt-get install -y ca-certificates curl gnupg lsb-release jq "${APT_PROXY_ARGS[@]}"
+
+# ----------------------------------------------------------
+# 6. Docker GPG key
+# ----------------------------------------------------------
+echo -e "${BLUE}==> 下载 Docker GPG 密钥${RESET}"
+sudo install -m 0755 -d /etc/apt/keyrings
+
+sudo http_proxy="$HOST_HTTP_PROXY" https_proxy="$HOST_HTTPS_PROXY" \
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# ----------------------------------------------------------
+# 7. 添加 Docker 源
+# ----------------------------------------------------------
+CODENAME=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $CODENAME
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt-get update "${APT_PROXY_ARGS[@]}"
+
+# ----------------------------------------------------------
+# 8. 安装 Docker
+# ----------------------------------------------------------
+echo -e "${BLUE}==> 安装 Docker${RESET}"
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin "${APT_PROXY_ARGS[@]}"
+
+# ----------------------------------------------------------
+# 9. Docker daemon 代理处理（回环地址替换为本机 IP + 安全 JSON）
+# ----------------------------------------------------------
+echo -e "${BLUE}==> 配置 Docker daemon 代理${RESET}"
+
+resolve_loopback_to_host_ip() {
+  local proxy="$1"
+
+  # 如果不是 localhost 或 127.0.0.1，直接返回
+  if [[ ! "$proxy" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)? ]]; then
+    echo "$proxy"
+    return
+  fi
+
+  # 获取本机的首个非 lo IPv4
+  local host_ip
+  host_ip=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+
+  if [[ -z "$host_ip" ]]; then
+    echo -e "${RED}⛔ 未找到本机有效 IPv4，请检查网络${RESET}"
+    exit 1
+  fi
+
+  # 替换回环地址
+  echo "$proxy" | sed -E "s#(127\.0\.0\.1|localhost)#$host_ip#"
 }
 
-# ================================================================
-# 7. docker 就绪检查
-# ================================================================
-echo -e "${BLUE}==> 检查 docker 服务是否就绪${RESET}"
+DOCKER_HTTP_PROXY=$( [[ -n "$HOST_HTTP_PROXY"  ]] && resolve_loopback_to_host_ip "$HOST_HTTP_PROXY"  )
+DOCKER_HTTPS_PROXY=$( [[ -n "$HOST_HTTPS_PROXY" ]] && resolve_loopback_to_host_ip "$HOST_HTTPS_PROXY" )
 
-for i in {1..30}; do
-  if sudo docker info >/dev/null 2>&1; then
-    echo -e "${GREEN}✓ Docker 服务已正常运行${RESET}"
-    break
-  fi
-  sleep 1
-  [[ $i -eq 30 ]] && {
-    echo -e "${RED}✗ Docker 未能在 30 秒内启动${RESET}"
-    exit 13
-  }
-done
+sudo mkdir -p /etc/docker
 
-# ================================================================
-# 8. 组件完整性检查
-# ================================================================
-echo -e "${BLUE}==> 检查 docker / containerd / buildx 完整性${RESET}"
+daemon_json=$(jq -n \
+  --arg http "$DOCKER_HTTP_PROXY" \
+  --arg https "$DOCKER_HTTPS_PROXY" \
+  '{
+    proxies: {
+      "http-proxy": $http,
+      "https-proxy": $https,
+      "no-proxy": "localhost,127.0.0.1"
+    }
+  }'
+)
+echo "$daemon_json" | sudo tee /etc/docker/daemon.json >/dev/null
 
-command -v docker >/dev/null || { echo -e "${RED}✗ docker 缺失${RESET}"; exit 21; }
-command -v containerd >/dev/null || { echo -e "${RED}✗ containerd 缺失${RESET}"; exit 22; }
-docker buildx version >/dev/null 2>&1 || { echo -e "${RED}✗ buildx 缺失${RESET}"; exit 23; }
+# ----------------------------------------------------------
+# 10. systemd 守护进程代理
+# ----------------------------------------------------------
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null <<EOF
+[Service]
+EOF
 
-echo -e "${GREEN}✓ docker / containerd / buildx 均正常${RESET}"
+[[ -n "$DOCKER_HTTP_PROXY"  ]] && echo "Environment=\"HTTP_PROXY=$DOCKER_HTTP_PROXY\"" | sudo tee -a /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null
+[[ -n "$DOCKER_HTTPS_PROXY" ]] && echo "Environment=\"HTTPS_PROXY=$DOCKER_HTTPS_PROXY\"" | sudo tee -a /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null
+echo 'Environment="NO_PROXY=localhost,127.0.0.1"' | sudo tee -a /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null
 
-# ================================================================
-# 9. 测试镜像
-# ================================================================
-echo -e "${BLUE}==> 拉取并运行测试镜像（alpine）${RESET}"
+sudo systemctl daemon-reload
+sudo systemctl enable docker
+sudo systemctl restart docker
 
-sudo docker pull alpine:latest
-sudo docker run --rm alpine echo "hello docker"
+# ----------------------------------------------------------
+# 11. ~/.docker/config.json 代理（安全 JSON）
+# ----------------------------------------------------------
+USER_HOME="${HOME}"
+if [[ -n "${SUDO_USER:-}" ]]; then
+    USER="$SUDO_USER"
+    USER_HOME=$(eval echo "~$SUDO_USER")
+else
+    USER="$USER"
+fi
 
-echo -e "${GREEN}✓ 测试镜像运行成功${RESET}"
+mkdir -p "$USER_HOME/.docker"
 
-sudo docker rmi alpine:latest >/dev/null || true
+docker_config_json=$(jq -n \
+  --arg http "$DOCKER_HTTP_PROXY" \
+  --arg https "$DOCKER_HTTPS_PROXY" \
+  '{
+    proxies: {
+      default: {
+        httpProxy: $http,
+        httpsProxy: $https,
+        noProxy: "localhost,127.0.0.1"
+      }
+    }
+  }'
+)
 
-# ================================================================
-# 10. 完成
-# ================================================================
-echo -e "${GREEN} Docker 全部安装与检测完成！${RESET}"
+echo "$docker_config_json" | sudo tee "$USER_HOME/.docker/config.json" >/dev/null
+sudo chown -R "$USER":"$USER" "$USER_HOME/.docker"
+
+
+
+# ----------------------------------------------------------
+# 13. 检测 Docker 代理是否正确配置
+# ----------------------------------------------------------
+echo -e "${BLUE}==> 检查 Docker 代理配置${RESET}"
+
+HOST_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+
+echo -e "${YELLOW}本机 IPv4: $HOST_IP${RESET}"
+echo
+
+echo -e "${BLUE}1) /etc/docker/daemon.json${RESET}"
+if [[ -f /etc/docker/daemon.json ]]; then
+    cat /etc/docker/daemon.json
+    echo
+
+    # 检查字段
+    d_http=$(jq -r '.proxies["http-proxy"] // empty' /etc/docker/daemon.json)
+    d_https=$(jq -r '.proxies["https-proxy"] // empty' /etc/docker/daemon.json)
+
+    if [[ -n "$d_http" ]]; then
+        echo -e "  HTTP 代理: ${GREEN}$d_http${RESET}"
+    else
+        echo -e "  HTTP 代理: ${RED}未配置${RESET}"
+    fi
+
+    if [[ -n "$d_https" ]]; then
+        echo -e "  HTTPS 代理: ${GREEN}$d_https${RESET}"
+    else
+        echo -e "  HTTPS 代理: ${RED}未配置${RESET}"
+    fi
+else
+    echo -e "${RED}❌ 文件不存在: /etc/docker/daemon.json${RESET}"
+fi
+
+echo
+echo -e "${BLUE}2) systemd docker.service.d/http-proxy.conf${RESET}"
+if [[ -f /etc/systemd/system/docker.service.d/http-proxy.conf ]]; then
+    cat /etc/systemd/system/docker.service.d/http-proxy.conf
+else
+    echo -e "${RED}❌ 文件不存在: /etc/systemd/system/docker.service.d/http-proxy.conf${RESET}"
+fi
+
+echo
+echo -e "${BLUE}3) 用户 ~/.docker/config.json${RESET}"
+if [[ -f "$USER_HOME/.docker/config.json" ]]; then
+    cat "$USER_HOME/.docker/config.json"
+    echo
+
+    c_http=$(jq -r '.proxies.default.httpProxy // empty' "$USER_HOME/.docker/config.json")
+    c_https=$(jq -r '.proxies.default.httpsProxy // empty' "$USER_HOME/.docker/config.json")
+
+    if [[ -n "$c_http" ]]; then
+        echo -e "  HTTP 代理: ${GREEN}$c_http${RESET}"
+    else
+        echo -e "  HTTP 代理: ${RED}未配置${RESET}"
+    fi
+
+    if [[ -n "$c_https" ]]; then
+        echo -e "  HTTPS 代理: ${GREEN}$c_https${RESET}"
+    else
+        echo -e "  HTTPS 代理: ${RED}未配置${RESET}"
+    fi
+else
+    echo -e "${RED}❌ 文件不存在: $USER_HOME/.docker/config.json${RESET}"
+fi
+
+echo
+echo -e "${GREEN}🎯 Docker 代理配置检查完成${RESET}"
+
+# ----------------------------------------------------------
+# 12. 验证安装
+# ----------------------------------------------------------
+echo -e "${BLUE}==> 验证 Docker 工作情况${RESET}"
+sudo docker run --rm hello-world && echo -e "${GREEN}🎉 Docker 安装成功！${RESET}"
+
+echo -e "${GREEN}=============================================="
+echo -e " Docker 已安装并完成代理配置"
+echo -e " 用户 '$USER' 已加入 docker 组"
+echo -e " APT 使用宿主机原代理地址"
+echo -e " Docker daemon 代理回环自动转换为本机 IP"
+echo -e " docker 客户端 config.json 已安全生成"
+echo -e "==============================================${RESET}"
+
+read -p "按 回车键退出..."
+
