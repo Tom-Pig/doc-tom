@@ -4,7 +4,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 GREEN="\033[1;32m"; RED="\033[1;31m"; BLUE="\033[1;34m"; YELLOW="\033[1;33m"; RESET="\033[0m"
 
-echo -e "${BLUE}=== Docker 安装助手（智能代理 & 无系统污染版）===${RESET}"
+echo -e "${BLUE}=== Docker 安装,宿主机必须存在代理===${RESET}"
 
 # ----------------------------------------------------------
 # 1. 检测宿主机代理
@@ -20,7 +20,7 @@ if [[ -z "$HOST_HTTP_PROXY" && -z "$HOST_HTTPS_PROXY" ]]; then
   exit 1
 fi
 
-echo -e "${GREEN}🌐 宿主机代理检测成功:${RESET}"
+echo -e "${GREEN}宿主机代理检测成功:${RESET}"
 [[ -n "$HOST_HTTP_PROXY" ]]  && echo "  HTTP : $HOST_HTTP_PROXY"
 [[ -n "$HOST_HTTPS_PROXY" ]] && echo "  HTTPS: $HOST_HTTPS_PROXY"
 
@@ -44,7 +44,7 @@ sudo rm -rf /etc/docker /etc/apt/keyrings/docker.asc \
 # ----------------------------------------------------------
 # 4. 更新 APT
 # ----------------------------------------------------------
-echo -e "${BLUE}==> 更新 APT（使用临时代理）${RESET}"
+echo -e "${BLUE}==> 更新 APT（临时使用宿主机代理）${RESET}"
 sudo apt-get update "${APT_PROXY_ARGS[@]}"
 
 # ----------------------------------------------------------
@@ -105,7 +105,7 @@ resolve_loopback_to_host_ip() {
   host_ip=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
 
   if [[ -z "$host_ip" ]]; then
-    echo -e "${RED}⛔ 未找到本机有效 IPv4，请检查网络${RESET}"
+    echo -e "${RED}未找到本机有效 IPv4，请检查网络${RESET}"
     exit 1
   fi
 
@@ -210,7 +210,7 @@ if [[ -f /etc/docker/daemon.json ]]; then
         echo -e "  HTTPS 代理: ${RED}未配置${RESET}"
     fi
 else
-    echo -e "${RED}❌ 文件不存在: /etc/docker/daemon.json${RESET}"
+    echo -e "${RED} 文件不存在: /etc/docker/daemon.json${RESET}"
 fi
 
 echo
@@ -218,7 +218,7 @@ echo -e "${BLUE}2) systemd docker.service.d/http-proxy.conf${RESET}"
 if [[ -f /etc/systemd/system/docker.service.d/http-proxy.conf ]]; then
     cat /etc/systemd/system/docker.service.d/http-proxy.conf
 else
-    echo -e "${RED}❌ 文件不存在: /etc/systemd/system/docker.service.d/http-proxy.conf${RESET}"
+    echo -e "${RED} 文件不存在: /etc/systemd/system/docker.service.d/http-proxy.conf${RESET}"
 fi
 
 echo
@@ -242,23 +242,20 @@ if [[ -f "$USER_HOME/.docker/config.json" ]]; then
         echo -e "  HTTPS 代理: ${RED}未配置${RESET}"
     fi
 else
-    echo -e "${RED}❌ 文件不存在: $USER_HOME/.docker/config.json${RESET}"
+    echo -e "${RED} 文件不存在: $USER_HOME/.docker/config.json${RESET}"
 fi
 
 echo
-echo -e "${GREEN}🎯 Docker 代理配置检查完成${RESET}"
+echo -e "${GREEN} Docker 代理配置检查完成${RESET}"
 
 # ----------------------------------------------------------
 # 12. 验证安装
 # ----------------------------------------------------------
 echo -e "${BLUE}==> 验证 Docker 工作情况${RESET}"
-sudo docker run --rm hello-world && echo -e "${GREEN}🎉 Docker 安装成功！${RESET}"
+sudo docker run --rm hello-world && echo -e "${GREEN}Docker 安装成功！${RESET}"
 
 echo -e "${GREEN}=============================================="
 echo -e " Docker 已安装并完成代理配置"
-echo -e " APT 使用宿主机原代理地址"
-echo -e " Docker daemon 代理回环自动转换为本机 IP"
-echo -e " docker 客户端 config.json 已安全生成"
 echo -e "==============================================${RESET}"
 
 read -p "按 回车键退出..."
