@@ -256,7 +256,6 @@ sudo docker run --rm hello-world && echo -e "${GREEN}🎉 Docker 安装成功！
 
 echo -e "${GREEN}=============================================="
 echo -e " Docker 已安装并完成代理配置"
-echo -e " 用户 '$USER' 已加入 docker 组"
 echo -e " APT 使用宿主机原代理地址"
 echo -e " Docker daemon 代理回环自动转换为本机 IP"
 echo -e " docker 客户端 config.json 已安全生成"
