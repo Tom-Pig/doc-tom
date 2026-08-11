@@ -1,90 +1,749 @@
-1. 分支模型（Branch Model）
+==================================================
+Git 团队协作规范与常用命令手册
+==================================================
 
-主分支： • main/master —— 永远保持可发布
+# 一、Git 协作规范
 
-开发分支： 
-• develop —— 常规开发 
-• feature/* —— 新功能 
-• fix/* —— Bug修复 
-• release/* —— 预发布 
-• hotfix/* —— 紧急修复线上
+## 1. 分支模型（Branch Model）
 
-分支命名示例： feature/user-auth fix/navbar-style release/v2.1.0
+主分支：
+- main/master —— 永远保持可发布
 
-------------------------------------------------------------------------
+开发分支：
+- develop —— 常规开发
+- feature/* —— 新功能
+- fix/* —— Bug修复
+- release/* —— 预发布
+- hotfix/* —— 紧急修复线上
 
-2. Commit 提交规范（Angular）
+分支命名示例：
+feature/user-auth
+fix/navbar-style
+release/v2.1.0
 
-格式： ():
 
-常见 Type： 
-• feat —— 新功能 
-• fix —— 修复问题 
-• docs —— 文档更新 
-• style —— 格式调整（非逻辑） 
-• refactor —— 重构 
-• perf —— 性能优化 
-• test—— 测试内容 
-• chore —— 构建脚本、配置 
-• revert —— 回滚
+--------------------------------------------------
 
-示例： feat(login): 添加登录功能 fix(api): 修复用户数据加载失败
+## 2. Commit 提交规范（Angular）
 
-------------------------------------------------------------------------
+格式：
 
-3. Pull Request 规范
+type(scope): message
 
-PR 命名： [feature] 完成用户登录功能 [fix] 修复订单接口错误
 
-PR 要求： 
-• 描述清晰 
-• UI 变更附截图 
-• 关联 issue 
-• 单一职责，不要一次提交过多内容
+常见 Type：
 
-------------------------------------------------------------------------
+- feat —— 新功能
+- fix —— 修复问题
+- docs —— 文档更新
+- style —— 格式调整（非逻辑）
+- refactor —— 重构
+- perf —— 性能优化
+- test —— 测试内容
+- chore —— 构建脚本、配置
+- revert —— 回滚
 
-4. 代码 Review 规范
 
-检查内容： 
-• 命名规范 
-• 无重复代码 
-• 无潜在 bug 
-• 性能是否受影响 
-• 符合项目架构 
-• 是否包含必要测试
-• 未确认前不合并
+示例：
 
-------------------------------------------------------------------------
+feat(login): 添加登录功能
 
-5. 版本号规范（SemVer）
+fix(api): 修复用户数据加载失败
 
-语义化版本号： MAJOR.MINOR.PATCH
 
-示例： 1.0.0 —— 初始版本 
-      1.1.0 —— 新功能 
-      1.1.1 —— Bug 修复 
-      2.0.0 ——大版本变更
+--------------------------------------------------
 
-------------------------------------------------------------------------
+## 3. Pull Request 规范
 
-6. 提交前检查事项（Checklist）
+PR 命名：
 
-✔ 代码可运行 
-✔ 测试通过 
-✔ 无 console.log 等调试信息 
-✔ 文档已更新 
-✔ Commit 信息规范 
+[feature] 完成用户登录功能
+
+[fix] 修复订单接口错误
+
+
+PR 要求：
+
+- 描述清晰
+- UI 变更附截图
+- 关联 issue
+- 单一职责，不要一次提交过多内容
+
+
+--------------------------------------------------
+
+## 4. 代码 Review 规范
+
+检查内容：
+
+- 命名规范
+- 无重复代码
+- 无潜在 bug
+- 性能是否受影响
+- 符合项目架构
+- 是否包含必要测试
+- 未确认前不合并
+
+
+--------------------------------------------------
+
+## 5. 版本号规范（SemVer）
+
+语义化版本号：
+
+MAJOR.MINOR.PATCH
+
+
+示例：
+
+1.0.0 —— 初始版本
+
+1.1.0 —— 新功能
+
+1.1.1 —— Bug 修复
+
+2.0.0 —— 大版本变更
+
+
+--------------------------------------------------
+
+## 6. 提交前检查事项（Checklist）
+
+✔ 代码可运行
+✔ 测试通过
+✔ 无 console.log 等调试信息
+✔ 文档已更新
+✔ Commit 信息规范
 ✔ PR 内容完整
 
-------------------------------------------------------------------------
 
-7. 最佳实践（Best Practices）
+--------------------------------------------------
 
-• 每次提交只做一件事 
-• 定期删除已合并分支 
-• 使用 .gitignore 
-• 使用rebase 保持提交历史整洁 
-• 不合并未 review 的代码
+## 7. 最佳实践（Best Practices）
 
-====================================
+- 每次提交只做一件事
+- 定期删除已合并分支
+- 使用 .gitignore
+- 使用 rebase 保持提交历史整洁
+- 不合并未 review 的代码
+
+
+
+==================================================
+Git 常用命令
+==================================================
+
+说明：
+
+<xxx> 表示需要替换的参数
+
+[xxx] 表示可选参数
+
+
+
+==================================================
+一、初始化与配置
+==================================================
+
+初始化仓库：
+
+git init
+
+
+克隆远程仓库：
+
+git clone <repository-url>
+
+
+指定目录：
+
+git clone <repository-url> <directory>
+
+
+配置用户信息：
+
+设置用户名：
+
+git config --global user.name "<username>"
+
+
+设置邮箱：
+
+git config --global user.email "<email>"
+
+
+查看配置：
+
+git config --list
+
+
+查看用户：
+
+git config user.name
+
+git config user.email
+
+
+
+==================================================
+二、基础操作
+==================================================
+
+查看状态：
+
+git status
+
+git status -s
+
+
+查看代码修改：
+
+查看未暂存修改：
+
+git diff
+
+
+查看已暂存修改：
+
+git diff --cached
+
+
+查看指定文件：
+
+git diff <file>
+
+
+
+添加文件：
+
+添加全部：
+
+git add .
+
+
+添加指定文件：
+
+git add <file>
+
+
+添加目录：
+
+git add <directory>
+
+
+
+提交代码：
+
+标准提交：
+
+git commit -m "type(scope): message"
+
+
+示例：
+
+git commit -m "feat(login): add user login"
+
+
+
+修改最近一次提交：
+
+修改提交信息：
+
+git commit --amend
+
+
+追加修改：
+
+git add .
+
+git commit --amend --no-edit
+
+
+
+==================================================
+三、分支管理
+==================================================
+
+查看分支：
+
+查看本地：
+
+git branch
+
+
+查看远程：
+
+git branch -r
+
+
+查看全部：
+
+git branch -a
+
+
+查看当前分支：
+
+git branch --show-current
+
+
+
+创建分支：
+
+git branch <branch-name>
+
+
+创建并切换：
+
+git switch -c <branch-name>
+
+
+示例：
+
+git switch -c feature/user-auth
+
+
+
+切换分支：
+
+git switch <branch-name>
+
+
+
+删除分支：
+
+删除本地：
+
+git branch -d <branch-name>
+
+
+强制删除：
+
+git branch -D <branch-name>
+
+
+删除远程：
+
+git push origin --delete <branch-name>
+
+
+
+==================================================
+四、远程仓库
+==================================================
+
+查看远程：
+
+git remote -v
+
+
+添加远程：
+
+git remote add origin <repository-url>
+
+
+修改远程地址：
+
+git remote set-url origin <repository-url>
+
+
+获取远程更新：
+
+同步远程信息：
+
+git fetch origin
+
+
+清理远程删除分支：
+
+git fetch --prune
+
+
+拉取代码：
+
+普通：
+
+git pull
+
+
+推荐：
+
+git pull --rebase
+
+
+指定分支：
+
+git pull origin <branch-name>
+
+
+推送代码：
+
+普通：
+
+git push
+
+
+首次推送：
+
+git push -u origin <branch-name>
+
+
+指定分支：
+
+git push origin <branch-name>
+
+
+
+==================================================
+五、Merge 与 Rebase
+==================================================
+
+Merge 合并：
+
+切换目标分支：
+
+git switch <branch>
+
+
+合并：
+
+git merge <branch>
+
+
+示例：
+
+git switch develop
+
+git merge feature/user-auth
+
+
+
+Rebase 整理历史：
+
+获取最新代码：
+
+git fetch origin
+
+
+执行：
+
+git rebase <branch>
+
+
+示例：
+
+git rebase develop
+
+
+冲突解决：
+
+git add <file>
+
+git rebase --continue
+
+
+取消：
+
+git rebase --abort
+
+
+
+==================================================
+六、提交历史
+==================================================
+
+查看完整日志：
+
+git log
+
+
+简洁日志：
+
+git log --oneline
+
+
+图形化日志：
+
+git log --graph --decorate --oneline --all
+
+
+查看提交详情：
+
+git show <commit-id>
+
+
+查看文件历史：
+
+git log -- <file>
+
+
+跟踪文件变化：
+
+git log --follow <file>
+
+
+查看修改作者：
+
+git blame <file>
+
+
+
+==================================================
+七、撤销与回滚
+==================================================
+
+撤销文件修改：
+
+git restore <file>
+
+
+取消暂存：
+
+git restore --staged <file>
+
+
+Reset 回退：
+
+保留代码：
+
+git reset --soft HEAD~1
+
+
+取消提交：
+
+git reset --mixed HEAD~1
+
+
+彻底删除：
+
+git reset --hard HEAD~1
+
+
+示例：
+
+git reset --hard HEAD~1
+
+
+Revert 安全回滚：
+
+生产环境推荐：
+
+git revert <commit-id>
+
+
+
+==================================================
+八、Stash 临时保存
+==================================================
+
+保存修改：
+
+git stash
+
+
+查看保存：
+
+git stash list
+
+
+恢复并删除：
+
+git stash pop
+
+
+恢复但保留：
+
+git stash apply stash@{0}
+
+
+删除：
+
+git stash drop stash@{0}
+
+
+清空：
+
+git stash clear
+
+
+
+==================================================
+九、Tag 版本管理
+==================================================
+
+创建版本：
+
+git tag <version>
+
+
+示例：
+
+git tag v1.0.0
+
+
+创建说明版本：
+
+git tag -a <version> -m "<message>"
+
+
+查看版本：
+
+git tag
+
+
+推送版本：
+
+git push origin <version>
+
+
+推送全部：
+
+git push origin --tags
+
+
+删除本地版本：
+
+git tag -d <version>
+
+
+删除远程版本：
+
+git push origin --delete <version>
+
+
+
+==================================================
+十、Git Ignore
+==================================================
+
+查看忽略文件：
+
+git status --ignored
+
+
+检查忽略规则：
+
+git check-ignore <file>
+
+
+常见 .gitignore：
+
+node_modules/
+
+dist/
+
+.env
+
+*.log
+
+.idea/
+
+.vscode/
+
+target/
+
+
+
+==================================================
+十一、企业开发流程
+==================================================
+
+创建功能分支：
+
+git switch develop
+
+git pull --rebase
+
+git switch -c feature/<name>
+
+
+开发提交：
+
+git add .
+
+git commit -m "feat(<scope>): message"
+
+
+同步开发分支：
+
+git fetch origin
+
+git rebase origin/develop
+
+
+推送功能分支：
+
+git push -u origin feature/<name>
+
+
+查看完整提交树：
+
+git log --graph --decorate --oneline --all
+
+
+
+==================================================
+十二、Git Alias
+==================================================
+
+设置：
+
+git config --global alias.st status
+
+git config --global alias.br branch
+
+git config --global alias.co checkout
+
+git config --global alias.cm commit
+
+
+日志快捷：
+
+git config --global alias.lg \
+"log --graph --oneline --decorate --all"
+
+
+使用：
+
+git lg
+
+
+
+==================================================
+十三、日常高频命令
+==================================================
+
+查看状态：
+
+git status
+
+
+更新代码：
+
+git pull --rebase
+
+
+创建功能：
+
+git switch -c feature/<name>
+
+
+提交：
+
+git add .
+
+git commit -m "feat(<scope>): message"
+
+
+推送：
+
+git push
+
+
+查看历史：
+
+git log --graph --oneline --all
+
+
+==================================================
+End
+==================================================
