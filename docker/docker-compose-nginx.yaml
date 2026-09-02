@@ -14,3 +14,145 @@ services:
       options:
         max-size: "10m"
         max-file: "2"
+    networks:
+      - module-net
+
+# ==================================================================================
+# ===============================CI/CD自动化工具======================================
+# ==================================================================================
+#   1. cp .env.example .env  并按注释填好(至少生成 PIPEWRIGHT_MASTER_KEY)
+#   2. docker compose up -d
+#   3. 打开 http://localhost:8080,用 admin / 你设的口令登录
+#
+# 数据(sqlite 库 / 构建产物 / 仓库缓存)持久化在具名卷 pipewright-data(挂到容器 /data,
+# 镜像已将 /data 设为 nonroot 属主与工作目录)。master key 务必持久保存:换 key 旧凭据无法解密。
+  pipewright:
+    image: ghcr.io/huangchengsir/pipewright:${PIPEWRIGHT_VERSION:-latest}
+    container_name: pipewright
+    restart: unless-stopped
+    ports:
+      - "${PIPEWRIGHT_PORT:-8080}:8080"
+    environment:
+      # 初始管理员口令(首启建账;之后改这里不改库)。务必改掉。
+      PIPEWRIGHT_ADMIN_PASSWORD: ${PIPEWRIGHT_ADMIN_PASSWORD:?请在 .env 设置 PIPEWRIGHT_ADMIN_PASSWORD}
+      # 凭据保险库主密钥(base64 的 32 字节)。空则保险库进未配置态、加密凭据功能不可用。
+      PIPEWRIGHT_MASTER_KEY: ${PIPEWRIGHT_MASTER_KEY:-}
+      # 反代后部署时填外部访问 URL(用于 webhook 回调 / OAuth 回跳)。
+      PIPEWRIGHT_PUBLIC_URL: ${PIPEWRIGHT_PUBLIC_URL:-}
+      # 默认 sqlite,库落 /data/pipewright.db(WORKDIR=/data)。切 MySQL 见下方 env + 注释。
+      PIPEWRIGHT_DB_DRIVER: ${PIPEWRIGHT_DB_DRIVER:-sqlite}
+      PIPEWRIGHT_DB_DSN: ${PIPEWRIGHT_DB_DSN:-}
+      # 运行执行器:默认 DAG(真按 UI 可视化流水线 stages 执行)。仅需回退旧版固定流程时
+      # 显式设 PIPEWRIGHT_RUNNER=legacy(clone→对仓库根 docker build→deploy,不跑可视化流水线)。
+      PIPEWRIGHT_RUNNER: ${PIPEWRIGHT_RUNNER:-}
+    volumes:
+      - pipewright-data:/data
+      # 隔离构建 / 镜像部署需要 Docker:取消下一行挂宿主 docker.sock(注意:等同授予宿主 root 级权限,
+      # 仅在信任的自托管环境开启)。注意 distroless 镜像不含 docker CLI;需要容器内跑 docker 构建时,
+      # 建议改用 install.sh 把二进制装在带 Docker 的宿主上,而非在本容器内构建。
+      # - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      # 静态镜像无 curl/wget;用二进制自身做 TCP 探活的最小手段:复用 --version(进程可执行即健康)。
+      test: ["CMD", "/pipewright", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - module-net
+
+# ==================================================================================
+# ===============================一主两从数据库======================================
+# ==================================================================================
+  postgres-postgres/main:
+    image: postgres:15.19
+    container_name: postgres-postgres/main
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres/main/data:/var/lib/postgresql/data
+      - ./postgres/main/init:/docker-entrypoint-initdb.d:ro
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - wal_keep_size=256MB
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -d app"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - module-net
+
+  postgres-replica1:
+    image: postgres:15.19
+    container_name: postgres-replica1
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgres/replica1/data:/var/lib/postgresql/data
+    depends_on:
+      postgres-postgres/main:
+        condition: service_healthy
+    command:
+      - postgres
+      - -c
+      - hot_standby=on
+    networks:
+      - module-net
+
+  postgres-replica2:
+    image: postgres:15.19
+    container_name: postgres-replica2
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./postgres/replica2/data:/var/lib/postgresql/data
+    depends_on:
+      postgres-postgres/main:
+        condition: service_healthy
+    command:
+      - postgres
+      - -c
+      - hot_standby=on
+    networks:
+      - module-net
+
+
+
+volumes:
+  pipewright-data:
+
+networks:
+  module-net:
+    driver: bridge
