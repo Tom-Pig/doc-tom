@@ -1,22 +1,18 @@
 services:
-  nginx-http:
-    image: nginx:1.28.2
-    container_name: nginx-http
-    restart: unless-stopped
+# ==================================================================================
+# ===============================容器管理工具======================================
+# ==================================================================================
+  portainer:
+    image: portainer/portainer-ce:2.45.0
+    container_name: portainer
+    restart: always
     ports:
-      - "3001:80"
+      - "9000:9000"
     volumes:
-      - ./nginx-http/html:/usr/share/nginx/html:ro
-      - ./nginx-http/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx-http/logs:/var/log/nginx
-    logging:
-      driver: local
-      options:
-        max-size: "10m"
-        max-file: "2"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer/data:/data
     networks:
       - module-net
-
 # ==================================================================================
 # ===============================CI/CD自动化工具======================================
 # ==================================================================================
@@ -61,10 +57,30 @@ services:
     networks:
       - module-net
 
+  nginx-http:
+    image: nginx:1.28.2
+    container_name: nginx-http
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    volumes:
+      - ./nginx-http/html:/usr/share/nginx/html:ro
+      - ./nginx-http/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx-http/logs:/var/log/nginx
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "2"
+    networks:
+      - module-net
+
+
+
 # ==================================================================================
 # ===============================一主两从数据库======================================
 # ==================================================================================
-  postgres-postgres/main:
+  postgres-postgres-main:
     image: postgres:15.19
     container_name: postgres-postgres/main
     restart: unless-stopped
@@ -116,7 +132,7 @@ services:
     volumes:
       - ./postgres/replica1/data:/var/lib/postgresql/data
     depends_on:
-      postgres-postgres/main:
+      postgres-postgres-main:
         condition: service_healthy
     command:
       - postgres
@@ -139,7 +155,7 @@ services:
     volumes:
       - ./postgres/replica2/data:/var/lib/postgresql/data
     depends_on:
-      postgres-postgres/main:
+      postgres-postgres-main:
         condition: service_healthy
     command:
       - postgres
