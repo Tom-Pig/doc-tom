@@ -4,4 +4,4 @@ docker/portainer/data/portainer.pub
 docker/nginx-http/logs/error.log
 docker/portainer/data/portainer.db
 docker/portainer/data/portainer.key
-
+docker/nginx-http/logs
